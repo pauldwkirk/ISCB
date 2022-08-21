@@ -1,0 +1,265 @@
+---
+title: "Gaussian process regression"
+author: "Paul DW Kirk"
+date: "14/02/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(mvtnorm)
+library(gplite)
+```
+
+```{r}
+# Set working directory
+# setwd("your/directory/here")  https://cran.r-project.org/web/packages/gplite/vignettes/quickstart.html
+```
+
+## The multivariate Gaussian distribution:
+
+The famous (Fisher's or Anderson's) iris dataset gives the measurements in centimeters of the variables sepal length and width and petal length and width for 50 flowers from each of 3 species of iris. The species are Iris setosa, versicolor, and virginica.
+
+```{r eval = FALSE}
+
+n  <- 6
+
+x  <- matrix(seq(0,1,length.out = n), ncol=1)
+y  <- sin(2*pi*x) + rnorm(n,0,1e-1)
+
+#Specify the GP model we want to use:
+gp <- gp_init(
+  cfs = cf_sexp(),  # A squared exponential (aka Gaussian aka RBF) kernel
+  lik = lik_gaussian(), # Assume Gaussian distributed errors
+  method = method_full() # Use the full covariance (i.e. do not approximate)
+)
+
+#Now fit the model to the data:
+gp <- gp_optim(gp, x, y)
+
+# compute the predictive mean and variance in a grid of points
+xt <- seq(0,1,len=150)
+pred <- gp_pred(gp, xt, var=T)
+
+# visualize
+mu <- pred$mean
+lb <- pred$mean - 2*sqrt(pred$var)
+ub <- pred$mean + 2*sqrt(pred$var)
+ggplot() + 
+  geom_ribbon(aes(x=xt, ymin=lb, ymax=ub), fill='lightgray') +
+  geom_line(aes(x=xt, y=mu), size=0.5) +
+  geom_point(aes(x=x, y=y), size=2) +
+  xlab('x') + ylab('y')
+
+
+```
+
+```{r eval = FALSE}
+set.seed(10)
+#Specify the GP model we want to use:
+gp03_1 <- gp_init(
+  cfs = cf_sexp(lscale = 0.3, magn = 1),  # A squared exponential (aka Gaussian aka RBF) kernel
+)
+
+
+gp005_3 <- gp_init(
+  cfs = cf_sexp(lscale = 0.05, magn = 3),  # A squared exponential (aka Gaussian aka RBF) kernel
+)
+
+gp09_3 <- gp_init(
+  cfs = cf_sexp(lscale = 0.9, magn = 3),  # A squared exponential (aka Gaussian aka RBF) kernel
+)
+
+
+
+gp03_3 <- gp_init(
+  cfs = cf_sexp(lscale = 0.3, magn = 3),  # A squared exponential (aka Gaussian aka RBF) kernel
+)
+
+
+
+#Specify the GP model we want to use:
+gp1_1 <- gp_init(
+  cfs = cf_sexp(lscale = 1, magn = 1),  # A squared exponential (aka Gaussian aka RBF) kernel
+)
+
+gp <- gp1_1
+xt <- seq(-.5,1.5,len=150)
+
+ndraws <- 20
+
+draws <- gp_draw(gp03_1, xt, draws=ndraws)
+
+
+pp <- ggplot() + xlab('x') + ylab('y')
+for (i in 1:ndraws) {
+  pp <- pp + geom_line(data=data.frame(x=xt, y=draws[,i]), aes(x=x,y=y), color='darkgray')
+}
+pp + ylim(-10, 10)
+
+draws <- gp_draw(gp03_3, xt, draws=ndraws)
+
+
+pp <- ggplot() + xlab('x') + ylab('y')
+for (i in 1:ndraws) {
+  pp <- pp + geom_line(data=data.frame(x=xt, y=draws[,i]), aes(x=x,y=y), color='darkgray')
+}
+pp + ylim(-10, 10)
+
+draws <- gp_draw(gp005_3, xt, draws=ndraws)
+
+
+pp <- ggplot() + xlab('x') + ylab('y')
+for (i in 1:ndraws) {
+  pp <- pp + geom_line(data=data.frame(x=xt, y=draws[,i]), aes(x=x,y=y), color='darkgray')
+}
+pp + ylim(-10, 10)
+
+
+draws <- gp_draw(gp09_3, xt, draws=ndraws)
+
+
+pp <- ggplot() + xlab('x') + ylab('y')
+for (i in 1:ndraws) {
+  pp <- pp + geom_line(data=data.frame(x=xt, y=draws[,i]), aes(x=x,y=y), color='darkgray')
+}
+pp + ylim(-10, 10)
+
+
+```
+
+```{r eval = FALSE}
+set.seed(10)
+n <- 6
+x  <- matrix(seq(0,1,length.out = n), ncol=1)
+y  <- sin(2*pi*x) + rnorm(n,0,1e-1)
+
+ggplot() + 
+  geom_point(aes(x=x, y=y), size=2) +
+  xlab('x') + ylab('y') + xlim(-.5, 1.5)+ ylim(-3, 2.5)
+
+#Specify the GP model we want to use:
+gp <- gp_init(
+  cfs = cf_sexp(),  # A squared exponential (aka Gaussian aka RBF) kernel
+  lik = lik_gaussian(), # Assume Gaussian distributed errors
+  method = method_full() # Use the full covariance (i.e. do not approximate)
+)
+
+#Now fit the model to the data:
+gp <- gp_optim(gp, x, y)
+
+# compute the predictive mean and variance in a grid of points
+xt   <- seq(-.5,1.5,len=150)
+pred <- gp_pred(gp, xt, var=T)
+
+# visualize
+mu <- pred$mean
+lb <- pred$mean - 2*sqrt(pred$var)
+ub <- pred$mean + 2*sqrt(pred$var)
+ggplot() + 
+  geom_ribbon(aes(x=xt, ymin=lb, ymax=ub), fill='lightgray') +
+  geom_line(aes(x=xt, y=mu), size=0.5) +
+  geom_point(aes(x=x, y=y), size=2) +
+  xlab('x') + ylab('y')+ xlim(-.5, 1.5)+ ylim(-3, 2.5)
+
+ndraws <- 20
+draws  <- gp_draw(gp, xt, draws=ndraws)
+pp     <- ggplot() + xlab('x') + ylab('y')
+for (i in 1:ndraws) {
+  pp <- pp + geom_line(data=data.frame(x=xt, y=draws[,i]), aes(x=x,y=y), color='darkgray')
+}
+plot(pp + geom_point(aes(x=x,y=y), color='black', size=2) + xlim(-.5, 1.5)+ ylim(-3, 2.5))
+
+
+```
+
+
+
+# Combining covariance functions
+
+This section shows an example of how to combine several covariance functions into the model. We use the AirPassengers dataset for demonstration.
+
+Let's first load and visualize the data. We shall use the last 24 months as a test set and compare our model predictions to that.
+
+```{r}
+y_all <- datasets::AirPassengers
+x_all <- seq_along(y_all)
+
+# hold out 2 years as a test set
+nt <- 24
+n <- length(x_all) - nt
+x <- x_all[1:n]
+y <- y_all[1:n]
+xt <- x_all #tail(x_all, nt)
+yt <- y_all #tail(y_all, nt)
+
+ggplot() + 
+  geom_line(aes(x=x,y=y), color='black') +
+  geom_line(aes(x=xt,y=yt), color='red') +
+  xlab('Time (months)') + ylab('Num. of passengers (thousands)')
+```
+
+The data clearly has some systematic variability related to a yearly cycle (period of 12 months). To account for this, we use a periodic kernel (with a fixed period of 12 months) multiplied by a squared exponential with a rather large length-scale to obtain a quasi-periodic covariance function. To account for the rising trend, we use a combination of linear and constant covariance functions. To obtain a better fit, we fit the model on logarithm of the target variable. 
+
+The following code sets up the model. Here we use initial values for the parameters that are rather close to the optimal ones to make the optimization faster, but in practice it is usually not necessary to have such precise initial guess (the intial values can have effect, though, if the hyperparameter posterior is multimodal).
+```{r}
+
+# take a log transformation to get a more stationary process
+yscaled <- log(y)
+
+# set up the model
+cf0 <- cf_const()
+cf1 <- cf_lin()
+# cf2 <- cf_periodic(
+#   period=12, 
+#   prior_period = prior_fixed(),
+# ) * cf_sexp(
+#   lscale=100, 
+#   magn=1,
+#   prior_magn = prior_fixed()
+# )
+# cfs <- list(cf0, cf1, cf2)
+
+cf2 <- cf_periodic(
+  period=12
+)
+
+cf3 <- cf_sexp(lscale=100)
+
+cfs <- list(cf0, cf1)
+cfs <- list(cf0, cf1, cf2)
+cfs <- list(cf0, cf1, cf2*cf3)
+
+gp <- gp_init(cfs, lik=lik_gaussian(sigma=0.05))
+```
+
+Optimize the hyperparameters
+```{r, results='hide'}
+gp <- gp_optim(gp, x, yscaled, maxiter = 500,
+  restarts = 2)
+```
+
+Visualize the predictions
+```{r}
+
+pred_scaled <- gp_pred(gp, xt, var=T)
+
+pred <- exp(pred_scaled$mean)
+pred_lb <- exp(pred_scaled$mean - 2*sqrt(pred_scaled$var))
+pred_ub <- exp(pred_scaled$mean + 2*sqrt(pred_scaled$var))
+
+ggplot() + 
+  geom_ribbon(aes(x=xt, ymin=pred_lb, ymax=pred_ub), fill='lightgray') +
+  geom_line(aes(x=xt, y=pred), color='black', alpha=0.5) +
+  geom_line(aes(x=x, y=y), color='black') +
+  geom_line(aes(x=xt, y=yt), color='red', alpha=0.5) +
+  xlab('Time (months)') + ylab('Num. of passengers (thousands)')
+```
+
+The model's predictions match very closely to the actual observations in the last two years we left out before model fitting.
+
+

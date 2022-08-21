@@ -1,0 +1,266 @@
+---
+title: "Unsupervised learning: clustering and PCA"
+author: "Paul DW Kirk (with thanks to H Wickham for some examples)"
+date: "21/08/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(pheatmap)
+library(ggfortify)
+```
+
+```{r}
+# Set working directory
+# setwd("your/directory/here")
+```
+
+## Visualizing the iris dataset
+
+The famous (Fisher's or Anderson's) iris dataset gives the measurements in centimeters of the variables sepal length and width and petal length and width for 50 flowers from each of 3 species of iris. The species are Iris setosa, versicolor, and virginica.
+
+```{r}
+library(plotly)
+plot_ly(data = iris, x = ~Sepal.Width, y = ~Sepal.Length, 
+        color = ~Species, type = "scatter", mode = "markers")
+```
+
+## Clustering
+
+We start by considering 2 distance-based clustering algorithms: hierarchical clustering and k means clustering.
+
+### Hierarchical clustering
+
+Hierarchical clustering uses the algorithm described in lectures to sequentially group similar items together
+
+Hierarchical clustering in R is performed by the `hclust()` function, but as we discussed the choice of distance function is important.  In R, we first use the `dist()` function to compute the distances between points, and then apply `hclust()` to the resulting distance obbject to perform the clustering.
+
+```{r}
+#To improve visualisation, we consider only 50 observations
+reducedIrisData <- sample_n(iris, 50)
+
+#Select the numeric columns only:
+numericDataOnly <- reducedIrisData %>% 
+  select(Sepal.Length, Sepal.Width, Petal.Length, Petal.Width)
+
+#Create the dist object:
+irisDist        <- dist(numericDataOnly)  # What distance is being used here?
+
+#Perform the clustering:
+hclustIris <- hclust(irisDist, method = "complete")
+# "complete: measures the largest distance between any two points in distinct clusters (see slides).
+```
+
+We can use `plot()` to visualize the resulting dendrogram. We label each item by its species, and see that irises of the same species tend to group together. 
+
+```{r fig.height = 4}
+plot(hclustIris, labels = reducedIrisData$Species)
+```
+We can also visualise the whole (reduced) dataset, together with a dendrogram, by using a heatmap plotting function.  Here we use `pheatmap`.
+
+```{r fig.height = 4}
+#Create an "annotation row" to show the species name for each iris
+annotationRow <- data.frame(
+  Species = factor(reducedIrisData$Species)
+  )
+#We require the data and annotation row to have the same rownames:
+rownames(annotationRow) <- rownames(numericDataOnly) <- paste0("Iris", rownames(reducedIrisData))
+
+#Now use pheatmap to plot.  Note that pheatmap is re-performing the hierarchical clustering - this is all taken care of by the pheatmap function (we did not need to use hclust first)
+
+pheatmap(numericDataOnly, annotation_row = annotationRow, cellwidth = 20)
+```
+
+`hclust()` just provides an ordering and a dendrogram: it does not create discrete clusters.  To do this, the `cutree()` function can be used. We give cutree the output of `hclust()` and the desired number of clusters. `cutree()` returns a vector of cluster labels, which can be used to colour the data when plotting with `ggplot`:
+
+```{r}
+clusters <- cutree(hclustIris, 3)
+
+ggplot(reducedIrisData, aes(x = Sepal.Width, y = Sepal.Length)) +
+  geom_point(aes(color = factor(clusters)))
+```
+
+Try modifying the call to `hclust()` by using a different linkage option (choose from "complete", "single", "average", or "centroid"). See `?hclust()` to find out more.
+
+
+```{r fig.height = 4}
+hclustIrisAverageLinkage <- hclust(irisDist, method = "average")
+
+plot(hclustIrisAverageLinkage, labels = reducedIrisData$Species)
+
+```
+
+
+### K means clustering
+
+We can use `kmeans()` to perform k means clustering on the iris data. As with hierarchical clustering, we can only apply k means clustering to numerical data. Pass your numerical data to the `kmeans()` function, then set `center` to the number of clusters to search for ($k$) and `nstart` to the number of simulations to run. Since the results of k means clustering depend on the initial assignment of points to groups, which is random, R will run `nstart` simulations and then return the best results (as measured by the minimum sum of squared distances between each point and the centroid of the group it is assigned to). Finally, set the maximum number of iterations to let each simulation run in case the simulation cannot quickly find a stable grouping.
+
+```{r}
+kmeansIris <- kmeans(numericDataOnly, centers = 3, nstart = 20, iter.max = 50)
+print(kmeansIris$cluster)
+```
+
+For each iris in our dataset, the k means algorithm provides us with a cluster label. We can visualize these results as before, using `ggplot`.
+
+```{r}
+kmeansClusters <- factor(kmeansIris$cluster)
+ggplot(reducedIrisData, aes(x = Sepal.Width, y = Sepal.Length)) +
+  geom_point(aes(color = kmeansClusters))
+```
+
+Let's compare the k-means, hclust, and species clusters using pheatmap.
+
+```{r fig.height = 4}
+#Create an "annotation row" to show the species name for each iris
+annotationRow <- data.frame(
+  Species = factor(reducedIrisData$Species),
+  hlustClusters = factor(clusters),
+  kmeansClusters = kmeansClusters
+  )
+#We require the data and annotation row to have the same rownames:
+rownames(annotationRow) <- rownames(numericDataOnly) <- paste0("Iris", rownames(reducedIrisData))
+
+#Now use pheatmap to plot.  Note that pheatmap is re-performing the hierarchical clustering - this is all taken care of by the pheatmap function (we did not need to use hclust first)
+
+pheatmap(numericDataOnly, annotation_row = annotationRow, cellwidth = 20)
+```
+### Model-based clustering with mclust
+
+The `mclust()` package allows us to perform Gaussian mixture modelling.  Parameter estimation is performed by maximum likelihood, using an EM-algorithm.
+
+```{r}
+library(mclust)
+# We will choose the number of clusters using the Bayesian info criterion (BIC_)
+BIC <- mclustBIC(numericDataOnly)
+plot(BIC)  # MClust is considering a range of models - not just number of clusters, but also "EII", "VVV" etc.  What do you think is the difference between these models?
+
+```
+
+Having found the BIC, let's fit our "optimal" mclust model, and visualise the clustering
+
+```{r}
+mclustIris <- Mclust(numericDataOnly, x = BIC)
+plot(mclustIris, what = "classification")
+```
+Let's also plot using ggplot, to make comparison easier:
+```{r}
+mclustClusters <- factor(mclustIris$classification)
+ggplot(reducedIrisData, aes(x = Sepal.Width, y = Sepal.Length)) +
+  geom_point(aes(color = mclustClusters))
+```
+
+### Analysing high-dimensional data
+
+We consider a 500-dimensional dataset from the `dslabs` package.  The dataset comprises gene expression measurements obtained by profiling a number of different tissues.  We wish to see if the clusters in the dataset correspond to the tissue labels.
+
+```{r}
+library(dslabs)
+
+#Let's first plot the whole dataset:
+
+#Load the data
+data(tissue_gene_expression)
+
+#The gene expression data is in tissue_gene_expression$x, and the tissue information is provided in tissue_gene_expression$y
+
+#Set up the annotation row to show the tissue:
+annotationRow           <- data.frame(Tissue = factor(tissue_gene_expression$y))
+rownames(annotationRow) <- rownames(tissue_gene_expression$x)
+
+#Now use pheatmap to plot (note: the function automatically does hierarchical clustering of the rows and columns for us)
+pheatmap(tissue_gene_expression$x, annotation_row = annotationRow, show_rownames = F, show_colnames = F, scale = "column") #switch off row/column labels for improved aesthetic
+
+#The colorscale is less than ideal.  Can you change it? e.g. color = colorRampPalette(rev(brewer.pal(n = 7, name = "Spectral")))(100)
+library(RColorBrewer)
+
+pheatmap(tissue_gene_expression$x, annotation_row = annotationRow, show_rownames = F, show_colnames = F, scale = "column", color = colorRampPalette(colors = c("red", "white", "blue"))(100))  # Is this any better?
+```
+
+Now perform kmeans on the data, using the silhouette to determine an appropriate number of clusters.
+
+```{r}
+library(cluster) #This provides the silhouette function
+set.seed(1) #For reproducibility
+
+
+#We will use the silhouette score to choose an appropriate value for k.
+#The function below allows this to be calculated for kmeans clustering:
+silhouetteScore <- function(k, data){
+  kmOut   <- kmeans(data, centers = k, nstart=10)
+  silhOut <- silhouette(kmOut$cluster, dist(data))
+  return(mean(silhOut[, 3]))  #Return the mean of the silhouette, as in the slides
+}
+
+#Calculate the average silhouette for a range of k values:
+kRange            <- 2:25
+averageSilhouette <- sapply(kRange, silhouetteScore, tissue_gene_expression$x)
+plot(kRange, type='b', averageSilhouette, xlab='Number of clusters', ylab='Average Silhouette Scores', frame=FALSE)
+
+#We can see the maximum value is at k = 10
+print(paste("Final k:", kRange[which.max(averageSilhouette)]))
+
+#How does this compare to the number of tissues?
+print(paste("nTissues:",  length(unique(tissue_gene_expression$y)) ))
+```
+
+Let's compare the kmeans clusters, data, and tissue labels on a heatmap.
+```{r}
+
+finalKmeans <- kmeans(tissue_gene_expression$x, centers = kRange[which.max(averageSilhouette)], nstart=10)
+
+#Set up the annotation row to show the tissue and kmeans clusters:
+annotationRowK           <- data.frame(Tissue = factor(tissue_gene_expression$y),
+                                      KmeansClusters = factor(finalKmeans$cluster))
+rownames(annotationRow)  <- rownames(tissue_gene_expression$x)
+
+#Now use pheatmap to plot (note: the function automatically does hierarchical clustering of the rows and columns for us)
+pheatmap(tissue_gene_expression$x, annotation_row = annotationRowK, show_rownames = F, show_colnames = F, scale = "column", color = colorRampPalette(colors = c("red", "white", "blue"))(100))  #There is a reasonable (although imperfect) visual match between the clusters and tissues
+```
+
+
+For high-dimensional data, it is common to filter/screen the variables before clustering (although this is not without dangers, and can result in loss of useful information).  The most common way to do this is to set a variance threshold.
+
+```{r}
+#Start by calculating the variance of every gene:
+columnVariances <- apply(tissue_gene_expression$x, 2, var)
+
+#Now visualise (and hierarchically cluster) a reduced dataset comprising only those genes with a variance > 1
+
+reducedData     <- tissue_gene_expression$x[,columnVariances > 1]
+
+pheatmap(reducedData, annotation_row = annotationRow, show_rownames = F, show_colnames = F, scale = "column")
+# What do you think are the dangers and challenges of this approach for screening/filtering variables?
+
+```
+
+
+For high-dimensional data, it is common to filter/screen the variables before clustering (although this is not without dangers, and can result in loss of useful information).  The most common way to do this is to set a variance threshold.
+
+```{r}
+#Start by calculating the variance of every gene:
+columnVariances <- apply(tissue_gene_expression$x, 2, var)
+
+#Now visualise (and hierarchically cluster) a reduced dataset comprising only those genes with a variance > 1
+
+reducedData     <- tissue_gene_expression$x[,columnVariances > 1]
+
+pheatmap(reducedData, annotation_row = annotationRow, show_rownames = F, show_colnames = F, scale = "column")
+# What do you think are the dangers and challenges of this approach for screening/filtering variables?
+
+```
+
+Finally, we consider performing a principal components analysis (PCA) of the whole dataset, as an alternative way to visualise the data.
+```{r}
+geneExpressionData <- as.data.frame(tissue_gene_expression$x)
+geneExpressionData$Tissue <- tissue_gene_expression$y
+
+pca_res <- prcomp(geneExpressionData[,1:500], scale. = TRUE)
+
+autoplot(pca_res, data = geneExpressionData, colour = 'Tissue')
+```
+
